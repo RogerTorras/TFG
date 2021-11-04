@@ -96,13 +96,12 @@ int rank = -1;
 
 
 
-
 __global__ void  Kernel_Copy_CUDA ( float *b2, float *c2 )
 {
-	int i = threadIdx.x;
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
 	c2[i] = b2[i];
- }
+}
 
 void __attribute__((noinline)) Kernel_Copy( int k )
 {
@@ -112,7 +111,7 @@ void __attribute__((noinline)) Kernel_Copy( int k )
 	int j;
 	start_t = clock();
 	// kernel 1: Copy
-	Kernel_Copy_CUDA<<<N2/1024, 1024>>>(d_b2, d_c2);
+	Kernel_Copy_CUDA<<<N2/32, 32>>>(d_b2, d_c2);
 	/*
 	for (j=0; j<N2; j++)
 		c2[j] = b2[j];
@@ -129,6 +128,12 @@ void __attribute__((noinline)) Kernel_Copy( int k )
 	fclose(logFile);*/
 }
 
+__global__ void  Kernel_Scale_CUDA ( float *b2, float *c2, DATA_TYPE scalar )
+{
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+	c2[i] = b2[i] * scalar;
+}
 void __attribute__((noinline)) Kernel_Scale( int k, DATA_TYPE scalar )
 {
 
@@ -138,8 +143,9 @@ void __attribute__((noinline)) Kernel_Scale( int k, DATA_TYPE scalar )
 	int j;
 	start_t = clock();
 	// kernel 2: Scale
-	for (j=0; j<N2; j++)
-		c2[j] = scalar*b2[j];
+	Kernel_Scale_CUDA<<<N2/32, 32>>>(d_b2, d_c2, scalar);
+	/*for (j=0; j<N2; j++)
+		c2[j] = scalar*b2[j];*/
 	end_t = clock();
 	times[1][k] = (double)(end_t - start_t) / CLOCKS_PER_SEC;
 	//Out
@@ -708,9 +714,18 @@ main(int argc, char *argv[])
 	{
 		sum+=c2[k];
 	}
-	printf("DEBUG: Final result %f \n",sum);
+	printf("DEBUG: Final result copy %f \n",sum);
 	for (k=0; k<NTIMES; k++)
 		Kernel_Scale( k, scalar );
+
+	cudaMemcpy(c2, d_c2, array_bytes2, cudaMemcpyDeviceToHost);
+	sum =0.0;
+	for(k=0;k<array_elements2; k++)
+	{
+		sum+=c2[k];
+	}
+	printf("DEBUG: Final result scale %f \n",sum);
+
 	for (k=0; k<NTIMES; k++)
 		Kernel_Add( k );
 		
