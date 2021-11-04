@@ -112,7 +112,7 @@ void __attribute__((noinline)) Kernel_Copy( int k )
 	int j;
 	start_t = clock();
 	// kernel 1: Copy
-	Kernel_Copy_CUDA<<<1, 1024>>>(d_b2, d_c2);
+	Kernel_Copy_CUDA<<<N2/1024, 1024>>>(d_b2, d_c2);
 	/*
 	for (j=0; j<N2; j++)
 		c2[j] = b2[j];
