@@ -20,7 +20,7 @@
 //N is Total Mem to be used and the size when only one vector
 //is used in a kernel
 #ifndef N
-#define N	10200000
+#define N	2048
 #endif
 
 #define DATA_TYPE float
@@ -47,7 +47,7 @@
 
 // Some compilers require an extra keyword to recognize the "restrict" qualifier.
 DATA_TYPE * __restrict__ a1, * __restrict__ b2, * __restrict__ c2, * __restrict__ d3, * __restrict__ e3, * __restrict__ f3, * __restrict__ vxmo, * __restrict__ vxmi, * __restrict__ mat_atax;
-DATA_TYPE * d_a1, * __restrict__ d_b2, * __restrict__ d_c2, * __restrict__ d_d3, * __restrict__ d_e3, * __restrict__ d_f3;
+DATA_TYPE * d_a1, *  d_b2, *  d_c2, * __restrict__ d_d3, * __restrict__ d_e3, * __restrict__ d_f3;
 
 
 DATA_TYPE * __restrict__ rand_list;
@@ -97,7 +97,12 @@ int rank = -1;
 
 
 
+__global__ void  Kernel_Copy_CUDA ( float *b2, float *c2 )
+{
+	int i = threadIdx.x;
 
+	c2[i] = b2[i];
+ }
 
 void __attribute__((noinline)) Kernel_Copy( int k )
 {
@@ -107,9 +112,11 @@ void __attribute__((noinline)) Kernel_Copy( int k )
 	int j;
 	start_t = clock();
 	// kernel 1: Copy
+	Kernel_Copy_CUDA<<<1, 1024>>>(d_b2, d_c2);
+	/*
 	for (j=0; j<N2; j++)
 		c2[j] = b2[j];
-
+	*/
 	end_t = clock();
 	times[0][k] = (double)(end_t - start_t) / CLOCKS_PER_SEC;
 	
@@ -643,13 +650,13 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-
+	cudaMalloc(&d_b2, array_elements2 * sizeof(DATA_TYPE)); 
+	cudaMalloc(&d_c2, array_elements2 * sizeof(DATA_TYPE)); 
     /* --- SETUP --- initialize arrays and estimate precision of timer --- */
 
     for (j=0; j<N; j++) {
 	    a1[j] = 1.0;
 	}
-	cudaMalloc(&d_a1, array_elements * sizeof(DATA_TYPE)); 
 	cudaMemcpy(d_a1, a1, array_bytes, cudaMemcpyHostToDevice);
     for (j=0; j<N2; j++) {
 	    b2[j] = 1.0;
@@ -683,6 +690,10 @@ main(int argc, char *argv[])
 	// MPI_Barrier(), when it should have been *before* the MPI_Barrier().
     // 
 	
+
+	cudaMemcpy(d_b2, b2, array_bytes2, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_c2, c2, array_bytes2, cudaMemcpyHostToDevice);
+
 	FILE *logFile = fopen("results.txt","a");
 	fprintf(logFile,"--------------------------------------------\n\n\n");
 	fclose(logFile);
@@ -691,12 +702,18 @@ main(int argc, char *argv[])
 
 	for (k=0; k<NTIMES; k++)
 		Kernel_Copy( k );
-	cudaMemcpy(a1, d_a1, array_bytes, cudaMemcpyDeviceToHost);
+	cudaMemcpy(c2, d_c2, array_bytes2, cudaMemcpyDeviceToHost);
+	float sum =0.0;
+	for(k=0;k<array_elements2; k++)
+	{
+		sum+=c2[k];
+	}
+	printf("DEBUG: Final result %f \n",sum);
 	for (k=0; k<NTIMES; k++)
 		Kernel_Scale( k, scalar );
 	for (k=0; k<NTIMES; k++)
 		Kernel_Add( k );
-		/*
+		
 	for (k=0; k<NTIMES; k++)	
 		Kernel_Triad( k, scalar );
 	for (k=0; k<NTIMES; k++)
@@ -722,7 +739,7 @@ main(int argc, char *argv[])
 	for (k=0; k<NTIMES; k++)
 		Kernel_MatMultNoOpt( k );
 	for (k=0; k<NTIMES; k++)
-		Kernel_Stencil( k );*/
+		Kernel_Stencil( k );
 	
 	for(int y = 0; y < NBENCH ; y++)
 	{
@@ -731,7 +748,7 @@ main(int argc, char *argv[])
 		{
 			m += times[y][z];
 		}
-		printf("DEBUG: Final Timing %s: %2.3f seconds\n",label[y],m);
+		printf("DEBUG: Final Timing %s: %f seconds\n",label[y],m);
 	}
 
 
