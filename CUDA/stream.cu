@@ -100,7 +100,7 @@ __global__ void  Kernel_Copy_CUDA ( float *b2, float *c2 )
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-	c2[i] = b2[i];
+	if (i < N2) c2[i] = b2[i];
 }
 
 void __attribute__((noinline)) Kernel_Copy( int k )
@@ -132,7 +132,7 @@ __global__ void  Kernel_Scale_CUDA ( float *b2, float *c2, DATA_TYPE scalar )
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-	c2[i] = b2[i] * scalar;
+	if (i < N2) c2[i] = b2[i] * scalar;
 }
 void __attribute__((noinline)) Kernel_Scale( int k, DATA_TYPE scalar )
 {
@@ -158,11 +158,11 @@ void __attribute__((noinline)) Kernel_Scale( int k, DATA_TYPE scalar )
 
 }
 
-__global__ void  Kernel_Add_CUDA ( float *d3, float *e3, float *f3 )
+__global__ void  Kernel_Add_CUDA ( float *d3, float *e3, float *f3)
 {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-	f3[i] = d3[i]+e3[i];
+	if (i < N3) f3[i] = d3[i]+e3[i];
 }
 void __attribute__((noinline)) Kernel_Add( int k )
 {
