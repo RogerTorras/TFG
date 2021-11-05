@@ -47,7 +47,7 @@
 
 // Some compilers require an extra keyword to recognize the "restrict" qualifier.
 DATA_TYPE * __restrict__ a1, * __restrict__ b2, * __restrict__ c2, * __restrict__ d3, * __restrict__ e3, * __restrict__ f3, * __restrict__ vxmo, * __restrict__ vxmi, * __restrict__ mat_atax;
-DATA_TYPE * d_a1, *  d_b2, *  d_c2, * __restrict__ d_d3, * __restrict__ d_e3, * __restrict__ d_f3;
+DATA_TYPE * d_a1, *  d_b2, *  d_c2, *  d_d3, *  d_e3, *  d_f3;
 
 
 DATA_TYPE * __restrict__ rand_list;
@@ -111,7 +111,7 @@ void __attribute__((noinline)) Kernel_Copy( int k )
 	int j;
 	start_t = clock();
 	// kernel 1: Copy
-	Kernel_Copy_CUDA<<<N2/32, 32>>>(d_b2, d_c2);
+	Kernel_Copy_CUDA<<<(N2+32-1)/32, 32>>>(d_b2, d_c2);
 	/*
 	for (j=0; j<N2; j++)
 		c2[j] = b2[j];
@@ -143,7 +143,7 @@ void __attribute__((noinline)) Kernel_Scale( int k, DATA_TYPE scalar )
 	int j;
 	start_t = clock();
 	// kernel 2: Scale
-	Kernel_Scale_CUDA<<<N2/32, 32>>>(d_b2, d_c2, scalar);
+	Kernel_Scale_CUDA<<<(N2+32-1)/32, 32>>>(d_b2, d_c2, scalar);
 	/*for (j=0; j<N2; j++)
 		c2[j] = scalar*b2[j];*/
 	end_t = clock();
@@ -158,6 +158,12 @@ void __attribute__((noinline)) Kernel_Scale( int k, DATA_TYPE scalar )
 
 }
 
+__global__ void  Kernel_Add_CUDA ( float *d3, float *e3, float *f3 )
+{
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+	f3[i] = d3[i]+e3[i];
+}
 void __attribute__((noinline)) Kernel_Add( int k )
 {
 
@@ -166,8 +172,9 @@ void __attribute__((noinline)) Kernel_Add( int k )
 	int j;
 	start_t = clock();
 	// kernel 3: Add
-	for (j=0; j<N3; j++)
-		f3[j] = d3[j]+e3[j];
+	Kernel_Add_CUDA<<<(N3+32-1)/32, 32, 32>>>(d_d3, d_e3, d_f3);
+	/*for (j=0; j<N3; j++)
+		f3[j] = d3[j]+e3[j];*/
 	end_t = clock();
 	times[2][k] = (double)(end_t - start_t) / CLOCKS_PER_SEC;
 	//Out
@@ -658,7 +665,11 @@ main(int argc, char *argv[])
 
 	cudaMalloc(&d_b2, array_elements2 * sizeof(DATA_TYPE)); 
 	cudaMalloc(&d_c2, array_elements2 * sizeof(DATA_TYPE)); 
-    /* --- SETUP --- initialize arrays and estimate precision of timer --- */
+	cudaMalloc(&d_d3, array_elements3 * sizeof(DATA_TYPE)); 
+	cudaMalloc(&d_e3, array_elements3 * sizeof(DATA_TYPE)); 
+	cudaMalloc(&d_f3, array_elements3 * sizeof(DATA_TYPE)); 
+
+	    /* --- SETUP --- initialize arrays and estimate precision of timer --- */
 
     for (j=0; j<N; j++) {
 	    a1[j] = 1.0;
@@ -671,7 +682,7 @@ main(int argc, char *argv[])
     for (j=0; j<N3; j++) {
 	    d3[j] = 1.0;
 		e3[j] = 1.0;
-		f3[j] = 1.0;
+		f3[j] = 0.0;
 	}
    for (j=0; j<n_vxm; j++){
 	vxmi[j] = 1.0;
@@ -699,6 +710,10 @@ main(int argc, char *argv[])
 
 	cudaMemcpy(d_b2, b2, array_bytes2, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_c2, c2, array_bytes2, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_d3, d3, array_bytes3, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_e3, e3, array_bytes3, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_f3, f3, array_bytes3, cudaMemcpyHostToDevice);
+
 
 	FILE *logFile = fopen("results.txt","a");
 	fprintf(logFile,"--------------------------------------------\n\n\n");
@@ -708,27 +723,20 @@ main(int argc, char *argv[])
 
 	for (k=0; k<NTIMES; k++)
 		Kernel_Copy( k );
-	cudaMemcpy(c2, d_c2, array_bytes2, cudaMemcpyDeviceToHost);
-	float sum =0.0;
-	for(k=0;k<array_elements2; k++)
-	{
-		sum+=c2[k];
-	}
-	printf("DEBUG: Final result copy %f \n",sum);
 	for (k=0; k<NTIMES; k++)
 		Kernel_Scale( k, scalar );
-
 	cudaMemcpy(c2, d_c2, array_bytes2, cudaMemcpyDeviceToHost);
-	sum =0.0;
-	for(k=0;k<array_elements2; k++)
-	{
-		sum+=c2[k];
-	}
-	printf("DEBUG: Final result scale %f \n",sum);
 
 	for (k=0; k<NTIMES; k++)
 		Kernel_Add( k );
-		
+	cudaMemcpy(f3, d_f3, array_bytes3, cudaMemcpyDeviceToHost);
+	float sum =0.0;
+	for(k=0;k<array_elements3; k++)
+	{
+		sum+=f3[k];
+	}
+	printf("DEBUG: Final result add %f \n",sum);
+
 	for (k=0; k<NTIMES; k++)	
 		Kernel_Triad( k, scalar );
 	for (k=0; k<NTIMES; k++)
